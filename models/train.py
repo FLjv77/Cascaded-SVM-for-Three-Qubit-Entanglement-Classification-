@@ -33,14 +33,14 @@ def load_data(root, seed):
 def fit(d, features, params):
     return SVC(cache_size=512, **params).fit(d[features],d.label)
 
-def select(train,val,features,kernel):
+def select(train,val,features,kernel,degree=None):
     candidates = [{"kernel":kernel,"C":c,"gamma":g,**({"degree":degree,"coef0":1} if kernel=="poly" else {})}
                   for c in (.1,1,10) for g in ("scale",.01,.1,1)
-                  for degree in (range(2,10) if kernel=="poly" else [0])]
+                  for degree in (([degree] if degree is not None else range(2,10)) if kernel=="poly" else [0])]
     best = None
     for params in candidates:
         m = fit(train,features,params)
-        score = accuracy_score(val.label,m.predict(val[features]))
+        score = roc_auc_score(val.label,m.decision_function(val[features]))
         if best is None or score>best[0]:
             best=(score,params,m)
     return best
@@ -62,6 +62,23 @@ def cascade_predict(models,x,features):
         prediction[active[hit]]=name
         active=active[~hit]
     return prediction
+
+def cascade_trace(models,x,features,truth):
+    truth=np.asarray(truth)
+    active=np.ones(len(x),dtype=bool)
+    rows=[]
+    for stage in ("GHZ","W","B"):
+        f=features[stage] if isinstance(features,dict) else features
+        hit=np.zeros(len(x),dtype=bool)
+        if active.any(): hit[active]=models[stage].predict(x.loc[active,f])==1
+        for c in CLASSES:
+            mask=truth==c
+            n=int((mask&active).sum()); accepted=int((mask&hit).sum())
+            rows.append(dict(stage=stage,true_class=c,entered=n,accepted=accepted,
+                             rejected=n-accepted,errors=(n-accepted if c==stage else accepted),
+                             upstream_excluded=int(mask.sum())-n))
+        active &= ~hit
+    return rows
 
 def cascade_set(splits,index):
     # Positive samples have unambiguous exclusive classes; B negatives are S.
@@ -88,10 +105,11 @@ def train_all(args):
         score,p,m=select(tr,va,FEATURES,args.kernel)
         params[name]=p; models[name]=m
         rankings[name]=rank_features(m,va,args.seed,args.repeats,args.importance_limit)
-        report[name]=dict(parameters=p,validation_accuracy=score,
+        report[name]=dict(parameters=p,validation_auc=float(score),validation_accuracy=float(accuracy_score(va.label,m.predict(va[FEATURES]))),
             test=metrics(te.label,m.predict(te[FEATURES]),[0,1],m.decision_function(te[FEATURES])))
     test=cascade_set(splits,2)
     report["cascade"]=metrics(test.entanglement,cascade_predict(models,test,FEATURES),CLASSES)
+    pd.DataFrame(cascade_trace(models,test,FEATURES,test.entanglement)).to_csv(out/"cascade_trace.csv",index=False)
     bundle=dict(models=models,features=FEATURES,parameters=params,classes=CLASSES)
     dump(bundle,out/"full_models.joblib")
     (out/"metrics.json").write_text(json.dumps(report,indent=2))
