@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.metrics import roc_curve,roc_auc_score,accuracy_score
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"models"))
-from train import FEATURES,load_data,fit
+from train import FEATURES,load_data,select
 
 def run(data,seed,out):
     out=Path(out); out.mkdir(parents=True,exist_ok=True)
@@ -14,15 +14,7 @@ def run(data,seed,out):
         for degree in [None,*range(2,10)]:
             kernel="rbf" if degree is None else "poly"
             tag="RBF" if degree is None else f"Polynomial {degree}"
-            best=None
-            for c in (.1,1,10):
-                for gamma in ("scale",.01,.1,1):
-                    params=dict(kernel=kernel,C=c,gamma=gamma)
-                    if degree is not None: params.update(degree=degree,coef0=1)
-                    m=fit(tr,FEATURES,params)
-                    auc=roc_auc_score(va.label,m.decision_function(va[FEATURES]))
-                    if best is None or auc>best[0]: best=(auc,m,params)
-            auc,m,params=best
+            auc,params,m=select(tr,va,FEATURES,kernel,degree)
             scores=m.decision_function(te[FEATURES])
             fpr,tpr,_=roc_curve(te.label,scores)
             rows.append(dict(model=name,kernel=tag,validation_auc=auc,test_auc=roc_auc_score(te.label,scores),test_accuracy=accuracy_score(te.label,m.predict(te[FEATURES])),**{k:v for k,v in params.items() if k!="kernel"}))
