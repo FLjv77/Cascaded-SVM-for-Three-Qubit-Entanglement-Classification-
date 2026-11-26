@@ -64,6 +64,12 @@ jobs:
           PROFILE: ${{ inputs.profile || 'smoke' }}
           SEED: ${{ matrix.seed }}
         run: python run_pipeline.py --profile "$PROFILE" --seed "$SEED"
+      - name: Publish seed summary
+        if: success()
+        env:
+          PROFILE: ${{ inputs.profile || 'smoke' }}
+          SEED: ${{ matrix.seed }}
+        run: cat "runs/$PROFILE/summary_${SEED}_details/summary.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -78,6 +84,10 @@ jobs:
     if: success()
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r experiments/requirements.txt
       - uses: actions/download-artifact@v4
         with:
           pattern: e2e-*
@@ -93,7 +103,12 @@ jobs:
           folders=sorted(p.parent for p in Path("collected").rglob("manifest.json"))
           aggregate(folders,Path("multi_seed_summary.json"))
           PY
+      - name: Publish combined summary
+        run: cat multi_seed_summary_details/summary.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: multi-seed-summary
-          path: multi_seed_summary.json
+          path: |
+            multi_seed_summary.json
+            multi_seed_summary_details/
+          retention-days: 14
