@@ -15,7 +15,7 @@ Only load trusted joblib files. Predictions are S, B, W, GHZ, referring to the e
 
 The input files are bi_vs_other.csv, w_vs_other.csv and ghz_vs_other.csv. Features are matched by Pauli column name, not column position. All labels use the new generator's convention: positive B means B minus S, positive W means W minus B, positive GHZ means GHZ minus W.
 
-Training uses stratified 70/15/15 splits, matching the manuscript. RBF SVC is the default. Hyperparameters C and gamma are selected on the validation set using accuracy; the grid is an implementation choice because the exact original grid is unavailable. Linear and polynomial alternatives are optional (polynomial degrees 2–9). The test split is not used for tuning or permutation importance. No scaling is applied to the bounded Pauli features.
+Training uses stratified 70/15/15 splits, matching the manuscript. RBF SVC is the default. Hyperparameters C and gamma are selected on the validation set using ROC AUC; the grid is an implementation choice because the exact original grid is unavailable. Linear and polynomial alternatives are optional (polynomial degrees 2–9). The test split is not used for tuning or permutation importance. No scaling is applied to the bounded Pauli features.
 
 The cascade evaluates GHZ first, then W, then B, otherwise returning S. Its four-class evaluation set combines held-out positive rows from each binary dataset and negative rows from B. This is a structured held-out test, not an independent OOD dataset or proof of performance on arbitrary states. The same construction is used for validation.
 
@@ -34,3 +34,5 @@ Permutation importance uses validation data, ten repeats and at most 2,000 valid
 The original notebooks' OOD, quantum-noise, PPT edge-state, and canonical-segmentation experiments are not ported here. The original trained model files and exact tuning parameters were unavailable. Reported manuscript accuracy is not guaranteed; new results must be measured. Full kernel SVM grid searches and 189 individual ablation fits can be expensive for 100,000 rows per model. Start with a small generated dataset.
 
 Use GitHub Actions > Generate and train cascaded SVM for a self-contained run. This generates a fresh dataset with the requested seed before training. Outputs are uploaded as an artifact rather than committed.
+
+Selection uses validation ROC AUC in both train.py and kernels.py, with identical grid and tie order. Permutation importance and consensus increments still use validation accuracy. cascade_trace.csv records entered, accepted, rejected, local errors and upstream exclusions by stage and true class; local errors for lower classifiers are not interpreted as in-domain classification errors when an earlier stage already missed a higher class.
