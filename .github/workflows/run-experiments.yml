@@ -1,0 +1,74 @@
+name: Run paper experiments
+on:
+  workflow_dispatch:
+    inputs:
+      training_run_id:
+        description: Successful training run ID (trusted artifact)
+        required: true
+        type: string
+      compare_kernels:
+        description: Regenerate training data and compare all kernels
+        type: boolean
+        default: false
+      diagnostics:
+        description: Regenerate training data and run batch and state sweeps
+        type: boolean
+        default: false
+      noise_samples_per_class:
+        description: Independent clean states per class for noise sweep
+        type: string
+        default: '100'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  experiments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r experiments/requirements.txt
+      - run: python -m unittest discover -s experiments -p 'test_*.py'
+      - uses: actions/download-artifact@v4
+        with:
+          name: cascaded-svm-results
+          run-id: ${{ inputs.training_run_id }}
+          github-token: ${{ github.token }}
+          path: trained
+      - name: Noise sweep
+        env:
+          N: ${{ inputs.noise_samples_per_class }}
+        run: python experiments/noise.py --model trained/model_outputs/full_models.joblib --samples-per-class "$N"
+      - name: Regenerate data from metadata
+        if: inputs.compare_kernels || inputs.diagnostics
+        run: |
+          python - <<'PY'
+          import json,subprocess,sys
+          m=json.load(open("trained/datasets/metadata.json"))
+          subprocess.run([sys.executable,"dataset_generation/generate.py","--samples-per-model",str(m["samples_per_model"]),"--seed",str(m["seed"])],check=True)
+          PY
+      - name: Kernel comparison
+        if: inputs.compare_kernels
+        run: |
+          SEED=$(python -c 'import json; print(json.load(open("trained/datasets/metadata.json"))["seed"])')
+          python experiments/kernels.py --seed "$SEED"
+      - name: Batch and state diagnostics
+        if: inputs.diagnostics
+        run: |
+          SEED=$(python -c 'import json; print(json.load(open("trained/datasets/metadata.json"))["seed"])')
+          python experiments/diagnostics.py --model trained/model_outputs/full_models.joblib --seed "$SEED"
+      - run: python experiments/plots.py --models trained/model_outputs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paper-experiments
+          path: |
+            experiment_outputs/
+            figures/
+          if-no-files-found: error
+          retention-days: 14
