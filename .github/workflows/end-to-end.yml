@@ -1,5 +1,8 @@
 name: End-to-end research pipeline
 on:
+  push:
+    paths:
+      - '.github/workflows/end-to-end.yml'
   workflow_dispatch:
     inputs:
       profile:
@@ -26,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: plan
         env:
-          PROFILE: ${{ inputs.profile }}
+          PROFILE: ${{ inputs.profile || 'smoke' }}
           SEED: ${{ inputs.seed }}
         run: |
           python - <<'PY'
@@ -58,13 +61,13 @@ jobs:
       - run: python -m unittest discover -s experiments -p 'test_*.py'
       - name: Run pipeline
         env:
-          PROFILE: ${{ inputs.profile }}
+          PROFILE: ${{ inputs.profile || 'smoke' }}
           SEED: ${{ matrix.seed }}
         run: python run_pipeline.py --profile "$PROFILE" --seed "$SEED"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-${{ inputs.profile }}-${{ matrix.seed }}
+          name: e2e-${{ inputs.profile || 'smoke' }}-${{ matrix.seed }}
           path: |
             runs/
           if-no-files-found: warn
@@ -81,7 +84,7 @@ jobs:
           path: collected
       - name: Aggregate successful runs
         env:
-          PROFILE: ${{ inputs.profile }}
+          PROFILE: ${{ inputs.profile || 'smoke' }}
         run: |
           python - <<'PY'
           from pathlib import Path
