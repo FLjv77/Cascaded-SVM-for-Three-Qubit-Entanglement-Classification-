@@ -1,0 +1,123 @@
+name: Fixed datasets and full model comparison
+on:
+  push:
+    paths:
+      - '.github/workflows/fixed-model.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Smoke or full-size experiment
+        type: choice
+        options: [smoke, full]
+        default: full
+      train:
+        description: Train after dataset preparation
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: fixed-model-${{ inputs.mode || 'full' }}
+  cancel-in-progress: false
+jobs:
+  datasets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    outputs:
+      tag: ${{ steps.config.outputs.tag }}
+      asset: ${{ steps.config.outputs.asset }}
+      n: ${{ steps.config.outputs.n }}
+      seed: ${{ steps.config.outputs.seed }}
+      fraction: ${{ steps.config.outputs.fraction }}
+      split_seed: ${{ steps.config.outputs.split_seed }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r models/requirements.txt
+      - id: config
+        env:
+          MODE: ${{ inputs.mode || 'full' }}
+        run: |
+          python - <<'PY'
+          import os,json,re
+          c=json.load(open('configs/fixed_model.json'))
+          assert c['schema']==1 and c['features']==63 and c['kernel']=='rbf' and c['selection']=='validation_auc'
+          assert not any(c[k] for k in ('ood','noise','consensus'))
+          n=200 if os.environ['MODE']=='smoke' else c['samples_per_model']
+          tag=f"{c['dataset_version']}-n{n}-s{c['seed']}-f{c['mixed_positive_fraction']}"
+          assert re.fullmatch(r'[a-zA-Z0-9_.-]+',tag)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              for k,v in dict(tag=tag,asset=tag+'.tar.gz',n=n,seed=c['seed'],fraction=c['mixed_positive_fraction'],split_seed=c['split_seed']).items(): print(f'{k}={v}',file=f)
+          PY
+      - run: python -m unittest discover -s dataset_generation -p test_fixed.py
+      - name: Restore or generate immutable dataset release
+        env:
+          TAG: ${{ steps.config.outputs.tag }}
+          ASSET: ${{ steps.config.outputs.asset }}
+          N: ${{ steps.config.outputs.n }}
+          SEED: ${{ steps.config.outputs.seed }}
+          FRACTION: ${{ steps.config.outputs.fraction }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release download "$TAG" --pattern "$ASSET" --pattern "$ASSET.sha256"
+            sha256sum -c "$ASSET.sha256"
+            tar -xzf "$ASSET"
+            python dataset_generation/fixed_datasets.py --output fixed_data --samples "$N" --seed "$SEED" --fraction "$FRACTION" --verify
+          else
+            python dataset_generation/fixed_datasets.py --output fixed_data --samples "$N" --seed "$SEED" --fraction "$FRACTION"
+            tar -czf "$ASSET" fixed_data
+            sha256sum "$ASSET" > "$ASSET.sha256"
+            gh release create "$TAG" "$ASSET" "$ASSET.sha256" --target "$GITHUB_SHA" --title "$TAG" --notes "Fixed paired dataset; change dataset_version when generation rules change. No OOD." 
+          fi
+          echo "## Fixed dataset" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Dataset release](https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Samples per model: $N; seed: $SEED; mixed B fraction: $FRACTION" >> "$GITHUB_STEP_SUMMARY"
+  train:
+    needs: datasets
+    if: ${{ github.event_name == 'push' || inputs.train }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      TAG: ${{ needs.datasets.outputs.tag }}
+      ASSET: ${{ needs.datasets.outputs.asset }}
+      N: ${{ needs.datasets.outputs.n }}
+      SEED: ${{ needs.datasets.outputs.seed }}
+      FRACTION: ${{ needs.datasets.outputs.fraction }}
+      SPLIT: ${{ needs.datasets.outputs.split_seed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r models/requirements.txt
+      - name: Download verified fixed datasets
+        run: |
+          gh release download "$TAG" --pattern "$ASSET" --pattern "$ASSET.sha256"
+          sha256sum -c "$ASSET.sha256"
+          tar -xzf "$ASSET"
+          python dataset_generation/fixed_datasets.py --output fixed_data --samples "$N" --seed "$SEED" --fraction "$FRACTION" --verify
+      - name: Train and compare full models
+        run: python models/compare_fixed.py --data fixed_data --output fixed_results --seed "$SPLIT"
+      - name: Publish comparison
+        run: cat fixed_results/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fixed-model-results-${{ needs.datasets.outputs.tag }}
+          path: fixed_results/
+          retention-days: 90
+      - name: Persist successful models and metrics
+        run: |
+          tar -czf "models-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz" fixed_results
+          sha256sum "models-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz" > "models-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz.sha256"
+          gh release upload "$TAG" "models-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz" "models-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz.sha256"
