@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "dataset_version": "fixed-bs-v1",
+  "seed": 42,
+  "samples_per_model": 100000,
+  "mixed_positive_fraction": 0.7,
+  "split_seed": 42,
+  "kernel": "rbf",
+  "selection": "validation_auc",
+  "features": 63,
+  "ood": false,
+  "noise": false,
+  "consensus": false
+}
