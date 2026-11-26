@@ -54,7 +54,14 @@ def aggregate(folders,output):
         records.append({"seed":manifest["seed"],**{k:report[k]["test"]["accuracy"] for k in ("GHZ","W","B")},"cascade":report["cascade"]["accuracy"]})
     if not records: raise ValueError("No completed runs to aggregate")
     summary={k:{"mean":statistics.mean(r[k] for r in records),"sample_std":statistics.stdev(r[k] for r in records) if len(records)>1 else None} for k in ("GHZ","W","B","cascade")}
-    output.write_text(json.dumps(dict(n_runs=len(records),per_seed=records,accuracy=summary),indent=2)+"\n")
+    if len({r["seed"] for r in records})!=len(records): raise ValueError("Duplicate seeds")
+    from experiments.aggregate import aggregate_experiments, plot_aggregates, markdown
+    full=dict(n_runs=len(records),per_seed=records,accuracy=summary)
+    output.write_text(json.dumps(full,indent=2)+"\n")
+    extra=output.parent/(output.stem+"_details")
+    results=aggregate_experiments(folders,extra)
+    plot_aggregates(results,extra)
+    (extra/"summary.md").write_text(markdown(full,results))
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
