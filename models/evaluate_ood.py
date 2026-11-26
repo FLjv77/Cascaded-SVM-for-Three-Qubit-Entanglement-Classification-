@@ -16,10 +16,13 @@ def evaluate(model,data,output):
         for name,m in bundle["models"].items():
             f=features[name] if isinstance(features,dict) else features
             y=d["label_"+name]
+            # Lower classifiers are only defined on their nested domains.
             keep=y.notna()
+            if name=="W": keep &= d.label_GHZ.eq(0)
+            if name=="B": keep &= d.label_GHZ.eq(0) & d.label_W.eq(0)
             pred=m.predict(d[f])
             result[name]={"n_total":len(d),"n_certified":int(keep.sum()),
-                "n_positive":int((y==1).sum()),"n_negative":int((y==0).sum()),
+                "n_positive":int((y[keep]==1).sum()),"n_negative":int((y[keep]==0).sum()),
                 "accuracy":float((pred[keep]==y[keep]).mean()) if keep.any() else None}
         keep=d[["label_B","label_W","label_GHZ"]].notna().all(axis=1)
         if keep.any():
