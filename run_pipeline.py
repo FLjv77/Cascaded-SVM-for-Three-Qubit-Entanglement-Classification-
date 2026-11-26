@@ -49,8 +49,10 @@ def aggregate(folders,output):
     records=[]
     for folder in folders:
         manifest=json.loads((folder/"manifest.json").read_text())
+        if manifest["status"]!="complete": raise ValueError(f"Incomplete run: {folder}")
         report=json.loads((folder/"models"/"metrics.json").read_text())
         records.append({"seed":manifest["seed"],**{k:report[k]["test"]["accuracy"] for k in ("GHZ","W","B")},"cascade":report["cascade"]["accuracy"]})
+    if not records: raise ValueError("No completed runs to aggregate")
     summary={k:{"mean":statistics.mean(r[k] for r in records),"sample_std":statistics.stdev(r[k] for r in records) if len(records)>1 else None} for k in ("GHZ","W","B","cascade")}
     output.write_text(json.dumps(dict(n_runs=len(records),per_seed=records,accuracy=summary),indent=2)+"\n")
 
