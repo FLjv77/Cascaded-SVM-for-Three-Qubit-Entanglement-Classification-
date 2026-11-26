@@ -1,0 +1,39 @@
+name: Generate three-qubit datasets
+on:
+  workflow_dispatch:
+    inputs:
+      samples_per_model:
+        description: Total samples per model (even number)
+        required: true
+        default: '100000'
+        type: string
+      seed:
+        description: Random seed
+        required: true
+        default: '42'
+        type: string
+permissions:
+  contents: read
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r dataset_generation/requirements.txt
+      - run: python -m unittest discover -s dataset_generation -p 'test_*.py'
+      - name: Generate datasets
+        env:
+          SAMPLE_COUNT: ${{ inputs.samples_per_model }}
+          RANDOM_SEED: ${{ inputs.seed }}
+          OPENBLAS_NUM_THREADS: '1'
+        run: python dataset_generation/generate.py --samples-per-model "$SAMPLE_COUNT" --seed "$RANDOM_SEED" --output datasets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: three-qubit-datasets
+          path: datasets/
+          if-no-files-found: error
+          retention-days: 14
