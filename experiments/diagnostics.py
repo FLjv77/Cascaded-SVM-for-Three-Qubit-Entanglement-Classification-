@@ -25,7 +25,10 @@ def run(bundle,data,seed,out,n):
     rows=[]; ranks=[]
     for name,(tr,va,te) in load_data(data,seed).items():
         # Use training partition only; keep global validation and test untouched.
-        batches=[np.array_split(tr.loc[tr.label==label].sample(frac=1,random_state=seed),10) for label in (0,1)]
+        batches=[]
+        for label in (0,1):
+            shuffled=tr.loc[tr.label==label].sample(frac=1,random_state=seed)
+            batches.append([shuffled.iloc[idx] for idx in np.array_split(np.arange(len(shuffled)),10)])
         for i in range(10):
             d=pd.concat([batches[0][i],batches[1][i]])
             if d.label.value_counts().min()<4: continue
