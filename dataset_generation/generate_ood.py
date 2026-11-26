@@ -58,7 +58,7 @@ def rows(rng,family,n):
         if family=="horodecki":
             rho=horodecki(rng.uniform(.001,.999))
             # Entangled across A|BC; no unverified higher-class labels.
-            labels=(1,None,None); gme=fidelity=None
+            labels=(None,None,None); gme=fidelity=None
         elif family=="edge":
             while True:
                 a,b,c=np.exp(rng.uniform(-2,2,3))
@@ -80,6 +80,8 @@ def rows(rng,family,n):
             raise ValueError("Expected PPT across every cut")
         if family=="horodecki" and minima[0]<-TOL:
             raise ValueError("Expected PPT across A|BC")
+        if family=="x" and gme<=TOL and min(minima)<-TOL:
+            labels=(1,0,0)  # biseparable and demonstrably not fully separable
         yield [*features(rho),*labels,gme,fidelity,*minima]
 
 def generate_ood(out,n,seed):
