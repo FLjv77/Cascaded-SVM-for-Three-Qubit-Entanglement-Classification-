@@ -42,10 +42,15 @@ def x_state(rng,concentrated=False):
         rho[i,7-i]=z[i]; rho[7-i,i]=z[i].conjugate()
     return rho
 
+def x_gap(rho):
+    d=rho.diagonal().real; z=np.abs(np.fliplr(rho).diagonal()[:4])
+    s=np.sqrt(d[:4]*d[::-1][:4])
+    return float(np.max(z+s)-s.sum())
+
 def x_scores(rho):
     d=rho.diagonal().real; z=np.abs(np.fliplr(rho).diagonal()[:4])
     s=np.sqrt(d[:4]*d[::-1][:4])
-    gme=2*max(0,float(np.max(z+s)-s.sum()))
+    gme=2*max(0,x_gap(rho))
     fidelity=float(np.max((d[:4]+d[::-1][:4])/2+z))
     return gme,fidelity
 
@@ -72,15 +77,14 @@ def rows(rng,family,n):
             # alternate with a GHZ-focused proposal; never relabel ambiguous GME.
             rho=x_state(rng,concentrated=bool(i%2))
             gme,fidelity=x_scores(rho)
-            labels=(None,0,0) if gme<=TOL else (1,1,1 if fidelity>.75+TOL else None)
-            # M_W is only defined on W: GME does not certify W membership.
-            if gme>TOL: labels=(None,None,labels[2])
+            # Leave numerical boundary cases unknown; positive GHZ witness is sufficient.
+            labels=(None,0,0) if x_gap(rho)<-TOL else (None,None,1 if fidelity>.75+TOL else None)
         minima=[ppt_min(rho,k) for k in range(3)]
         if family in ("edge","upb") and min(minima)<-TOL:
             raise ValueError("Expected PPT across every cut")
         if family=="horodecki" and minima[0]<-TOL:
             raise ValueError("Expected PPT across A|BC")
-        if family=="x" and gme<=TOL and min(minima)<-TOL:
+        if family=="x" and x_gap(rho)<-TOL and min(minima)<-TOL:
             labels=(1,0,0)  # biseparable and demonstrably not fully separable
         yield [*features(rho),*labels,gme,fidelity,*minima]
 
