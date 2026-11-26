@@ -1,5 +1,6 @@
 name: End-to-end research pipeline
 on:
+  # Workflow edits trigger the smoke profile; other profiles stay manual.
   push:
     paths:
       - '.github/workflows/end-to-end.yml'
