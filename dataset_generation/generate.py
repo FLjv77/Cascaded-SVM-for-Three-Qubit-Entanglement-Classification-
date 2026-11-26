@@ -69,6 +69,24 @@ def sep(rng):
 def bi(rng):
     return permute(np.kron(single(rng),entangled_pair(rng)),rng.permutation(3))
 
+def ppt_min_three(rho,cut):
+    axes=list(range(6)); axes[cut],axes[cut+3]=axes[cut+3],axes[cut]
+    return float(np.linalg.eigvalsh(rho.reshape((2,)*6).transpose(axes).reshape(8,8))[0])
+
+def mixed_bi(rng):
+    """Convex combination across distinct cuts; certify non-full-separability by NPT."""
+    for _ in range(1000):
+        cuts=rng.choice(3,size=int(rng.integers(2,4)),replace=False)
+        states=[]
+        for cut in cuts:
+            rho=np.kron(single(rng),entangled_pair(rng))
+            order=[1,2]; order.insert(int(cut),0)
+            states.append(permute(rho,order))
+        rho=sum(w*s for w,s in zip(rng.dirichlet(np.ones(len(states))),states))
+        if any(ppt_min_three(rho,cut)<-1e-8 for cut in range(3)):
+            return rho
+    raise RuntimeError("Mixed biseparable NPT rejection sampling exhausted")
+
 def mixture(rng, factories):
     n = int(rng.integers(2,5))
     return sum(w*factories[int(rng.integers(len(factories)))](rng)
