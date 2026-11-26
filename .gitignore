@@ -26,3 +26,12 @@ Thumbs.db
 outputs/
 checkpoints/
 *.log
+
+# Reproducible generated artifacts
+runs/
+datasets/
+ood_datasets/
+model_outputs/
+ood_results/
+experiment_outputs/
+figures/
