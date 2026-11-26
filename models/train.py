@@ -34,9 +34,9 @@ def fit(d, features, params):
     return SVC(cache_size=512, **params).fit(d[features],d.label)
 
 def select(train,val,features,kernel,degree=None):
-    candidates = [{"kernel":kernel,"C":c,"gamma":g,**({"degree":degree,"coef0":1} if kernel=="poly" else {})}
+    candidates = [{"kernel":kernel,"C":c,"gamma":g,**({"degree":d,"coef0":1} if kernel=="poly" else {})}
                   for c in (.1,1,10) for g in ("scale",.01,.1,1)
-                  for degree in (([degree] if degree is not None else range(2,10)) if kernel=="poly" else [0])]
+                  for d in (([degree] if degree is not None else range(2,10)) if kernel=="poly" else [0])]
     best = None
     for params in candidates:
         m = fit(train,features,params)
