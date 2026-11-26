@@ -1,0 +1,47 @@
+name: Evaluate independent OOD datasets
+on:
+  workflow_dispatch:
+    inputs:
+      training_run_id:
+        description: Successful training workflow run ID (trusted model artifact)
+        required: true
+        type: string
+      samples_per_family:
+        description: Number of OOD samples per family
+        default: '1000'
+        type: string
+      seed:
+        description: Independent OOD seed
+        default: '2027'
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r models/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: cascaded-svm-results
+          run-id: ${{ inputs.training_run_id }}
+          github-token: ${{ github.token }}
+          path: trained
+      - name: Generate OOD data
+        env:
+          N: ${{ inputs.samples_per_family }}
+          SEED: ${{ inputs.seed }}
+        run: python dataset_generation/generate_ood.py --samples-per-family "$N" --seed "$SEED"
+      - name: Evaluate frozen model
+        run: python models/evaluate_ood.py --model trained/model_outputs/full_models.joblib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ood-results
+          path: |
+            ood_datasets/
+            ood_results/
